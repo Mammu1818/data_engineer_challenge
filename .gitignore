@@ -1,0 +1,10 @@
+./env/
+env/
+./_pycache_/
+_pycache_/
+./.vscode/
+.vscode/
+./.idea/
+.idea/
+.env
+env

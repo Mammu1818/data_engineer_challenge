@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>World Bank Countries Profiles</title>
+    <link rel="shortcut icon" href="{{ url_for('static', path='mrp.png') }}" type="image/x-icon">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f4;
+      }
+      header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: #0077cc;
+        color: #fff;
+        padding: 15px 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        z-index: 1000;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      #search {
+        margin-top: 10px;
+        padding: 10px;
+        width: 300px;
+        border: none;
+        border-radius: 4px;
+      }
+      #content {
+        margin-top: 100px;
+        padding: 20px;
+      }
+      #countries-list {
+        max-height: 500px;
+        overflow-y: auto;
+        background: #fff;
+        border-radius: 4px;
+        padding: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      }
+      .country {
+        border-bottom: 1px solid #ddd;
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+      .country:last-child {
+        border-bottom: none;
+      }
+      .view-more {
+        background: #0077cc;
+        color: #fff;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 4px;
+        margin-top: 5px;
+      }
+      .profile {
+        margin-top: 10px;
+        padding: 10px;
+        background: #eef;
+        border-radius: 4px;
+      }
+      .profile h3 {
+        margin-top: 0;
+      }
+      .pagination {
+        margin-top: 10px;
+        text-align: center;
+      }
+      .pagination button {
+        margin: 2px;
+        padding: 5px 10px;
+        border: none;
+        background: #0077cc;
+        color: #fff;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      .pagination button:disabled {
+        background: #aaa;
+        cursor: default;
+      }
+      /* Loader spinner style */
+      .loader {
+        border: 6px solid #f3f3f3;
+        border-top: 6px solid #0077cc;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin: 10px auto;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>World Bank Countries Profiles</h1>
+      <input type="text" id="search" placeholder="Search for a country..." oninput="filterAndDisplay()" />
+    </header>
+    <div id="content">
+      <div id="countries-list"></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+    
+    <script>
+      let allCountries = [];
+      let currentPage = 1;
+      const itemsPerPage = 10;
+      
+      async function fetchCountries() {
+        const response = await fetch('/api/countries');
+        const data = await response.json();
+        return data.countries;
+      }
+      
+      function createCountryElement(country) {
+        const container = document.createElement('div');
+        container.className = 'country';
+        let html = `<strong>${country.name}</strong><br>`;
+        if (country.capitalCity) {
+          html += `Capital: ${country.capitalCity}<br>`;
+        }
+        if (country.region) {
+          html += `Region: ${country.region}<br>`;
+        }
+        if (country.incomeLevel) {
+          html += `Income Level: ${country.incomeLevel}<br>`;
+        }
+        html += `<button class="view-more" onclick="viewMore('${country.name}')">View More</button>`;
+        container.innerHTML = html;
+        return container;
+      }
+      
+      async function viewMore(countryName) {
+        const countryElements = document.getElementsByClassName('country');
+        let targetElement;
+        for (let el of countryElements) {
+          if (el.innerText.includes(countryName)) {
+            targetElement = el;
+            break;
+          }
+        }
+        if (!targetElement) return;
+        
+        // Toggle profile display: if already open, remove it.
+        const existingProfile = targetElement.querySelector('.profile');
+        if (existingProfile) {
+          targetElement.removeChild(existingProfile);
+          return;
+        }
+        
+        // Create and add the loader spinner.
+        const loaderDiv = document.createElement('div');
+        loaderDiv.className = 'loader';
+        targetElement.appendChild(loaderDiv);
+        
+        // Fetch full profile details on demand.
+        try {
+          const response = await fetch(`/api/countries/${encodeURIComponent(countryName)}`);
+          const data = await response.json();
+          const profile = data.country.profile;
+          
+          // Remove loader once data is fetched.
+          targetElement.removeChild(loaderDiv);
+          
+          // Create a div for the full profile display.
+          const profileDiv = document.createElement('div');
+          profileDiv.className = 'profile';
+          let profileHtml = "";
+          for (const section in profile) {
+            profileHtml += `<h3>${section}</h3><ul>`;
+            profile[section].forEach(item => {
+              profileHtml += `<li><strong>${item.indicator}</strong>: ${item.value} (${item.year})</li>`;
+            });
+            profileHtml += "</ul>";
+          }
+          profileDiv.innerHTML = profileHtml;
+          targetElement.appendChild(profileDiv);
+        } catch (error) {
+          targetElement.removeChild(loaderDiv);
+          console.error("Error loading profile", error);
+        }
+      }
+      
+      function displayCountriesPage(countries, page) {
+        const start = (page - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        const pagedCountries = countries.slice(start, end);
+        const listDiv = document.getElementById('countries-list');
+        listDiv.innerHTML = '';
+        pagedCountries.forEach(function(country) {
+          const el = createCountryElement(country);
+          listDiv.appendChild(el);
+        });
+        updatePaginationControls(countries.length, page);
+      }
+      
+      function updatePaginationControls(totalItems, page) {
+        const paginationDiv = document.getElementById('pagination');
+        paginationDiv.innerHTML = '';
+        const totalPages = Math.ceil(totalItems / itemsPerPage);
+        if(totalPages <= 1) return;
+        const prev = document.createElement('button');
+        prev.textContent = 'Prev';
+        prev.disabled = (page === 1);
+        prev.onclick = () => {
+          currentPage--;
+          filterAndDisplay();
+        };
+        paginationDiv.appendChild(prev);
+        for(let i = 1; i <= totalPages; i++){
+          const btn = document.createElement('button');
+          btn.textContent = i;
+          if(i === page) btn.disabled = true;
+          btn.onclick = () => {
+            currentPage = i;
+            filterAndDisplay();
+          };
+          paginationDiv.appendChild(btn);
+        }
+        const next = document.createElement('button');
+        next.textContent = 'Next';
+        next.disabled = (page === totalPages);
+        next.onclick = () => {
+          currentPage++;
+          filterAndDisplay();
+        };
+        paginationDiv.appendChild(next);
+      }
+      
+      async function filterAndDisplay() {
+        const query = document.getElementById('search').value.toLowerCase();
+        const filtered = allCountries.filter(country => country.name.toLowerCase().includes(query));
+        const totalPages = Math.ceil(filtered.length / itemsPerPage);
+        if(currentPage > totalPages) currentPage = 1;
+        displayCountriesPage(filtered, currentPage);
+      }
+      
+      window.onload = async () => {
+        allCountries = await fetchCountries();
+        filterAndDisplay();
+      }
+    </script>
+  </body>
+</html>
