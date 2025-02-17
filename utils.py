@@ -1,17 +1,6 @@
-from fastapi import FastAPI, HTTPException, Request # type: ignore
-from fastapi.responses import JSONResponse # type: ignore
-from fastapi.templating import Jinja2Templates # type: ignore
-
-from fastapi.staticfiles import StaticFiles # type: ignore
 import requests # type: ignore
+from fastapi import HTTPException # type: ignore
 from bs4 import BeautifulSoup # type: ignore
-import uvicorn # type: ignore
-
-app = FastAPI(title="World Bank Countries API")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
-countries_data = []
 
 def scrape_countries():
     """
@@ -72,27 +61,18 @@ def enrich_countries(scraped):
             country["id"] = ""
     return scraped
 
-def fetch_indicator(country_code: str, indicator_code: str):
+def fetch_and_enrich_countries():
     """
-    Fetch the most recent value for a given indicator and country using the World Bank API.
+    This function combines scraping countries and enriching them with their codes.
+    It first scrapes the country data, then enriches it with the country codes.
     """
-    url = f"https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator_code}?format=json&mrv=1"
-    response = requests.get(url)
-    if response.status_code != 200:
-        return None
-    try:
-        data = response.json()
-        if data and len(data) > 1 and data[1]:
-            record = data[1][0]
-            return {
-                "indicator": indicator_code,
-                "value": record.get("value", "No data"),
-                "year": record.get("date", "")
-            }
-        else:
-            return {"indicator": indicator_code, "value": "No data", "year": ""}
-    except Exception:
-        return {"indicator": indicator_code, "value": "No data", "year": ""}
+    # Step 1: Scrape countries
+    scraped_countries = scrape_countries()
+    
+    # Step 2: Enrich the scraped data with country codes
+    enriched_countries = enrich_countries(scraped_countries)
+    
+    return enriched_countries
 
 def scrape_country_profile(country_code: str):
     """
@@ -127,45 +107,24 @@ def scrape_country_profile(country_code: str):
             profile[section].append(result)
     return profile
 
-def fetch_and_enrich_countries():
+def fetch_indicator(country_code: str, indicator_code: str):
     """
-    Scrapes the basic list of countries and enriches it with country codes from the API.
+    Fetch the most recent value for a given indicator and country using the World Bank API.
     """
-    scraped = scrape_countries()
-    enriched = enrich_countries(scraped)
-    return enriched
-
-print("Fetching countries data at startup (hybrid scraping + API)...")
-countries_data = fetch_and_enrich_countries()
-
-@app.get("/api/countries", response_class=JSONResponse)
-def get_countries():
-    """
-    Returns the list of countries with basic information.
-    """
-    return {"countries": countries_data}
-
-@app.get("/api/countries/{country_name}", response_class=JSONResponse)
-def get_country_details(country_name: str):
-    """
-    Returns the full profile for a given country. If not yet fetched, the profile is built on demand
-    by retrieving selected indicators via the API.
-    """
-    for country in countries_data:
-        if country["name"].lower() == country_name.lower():
-            if not country.get("profile"):
-                if not country.get("id"):
-                    raise HTTPException(status_code=404, detail="Country code not found for profile lookup")
-                country["profile"] = scrape_country_profile(country["id"])
-            return {"country": country}
-    raise HTTPException(status_code=404, detail="Country not found")
-
-@app.get("/", response_class=JSONResponse)
-def index(request: Request):
-    """
-    Serves the external HTML page.
-    """
-    return templates.TemplateResponse("index.html", {"request": request})
-
-if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    url = f"https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator_code}?format=json&mrv=1"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+    try:
+        data = response.json()
+        if data and len(data) > 1 and data[1]:
+            record = data[1][0]
+            return {
+                "indicator": indicator_code,
+                "value": record.get("value", "No data"),
+                "year": record.get("date", "")
+            }
+        else:
+            return {"indicator": indicator_code, "value": "No data", "year": ""}
+    except Exception:
+        return {"indicator": indicator_code, "value": "No data", "year": ""}

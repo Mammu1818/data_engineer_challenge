@@ -7,7 +7,7 @@
 # Then Install the requiremnets using 
 ``` pip install -r requirements.txt```
 # Then Run the application using 
-``` uvicorn app:app --reload``` 
+``` uvicorn main:app --reload``` 
 # or 
 ```python app.py ```
 
